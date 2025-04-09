@@ -17,7 +17,8 @@ export default new Vuex.Store({
       industry: '',
       jobType: '',
       salaryMin: null,
-      salaryMax: null
+      salaryMax: null,
+      tags: []
     },
     pagination: {
       currentPage: 1,
@@ -68,6 +69,11 @@ export default new Vuex.Store({
           page: state.pagination.currentPage,
           page_size: state.pagination.pageSize,
           ...state.filters
+        }
+        
+        // 处理tags参数 - 如果有标签，将其转换为后端可接受的格式
+        if (state.filters.tags && state.filters.tags.length > 0) {
+          params.tags = JSON.stringify(state.filters.tags)
         }
         
         console.log('请求职位列表，参数:', params)
@@ -222,6 +228,13 @@ export default new Vuex.Store({
       } finally {
         commit('SET_LOADING', false)
       }
+    },
+    
+    // 根据标签过滤职位
+    filterByTags({ commit, dispatch }, tags) {
+      commit('SET_FILTERS', { tags })
+      commit('SET_PAGINATION', { currentPage: 1 }) // 重置到第一页
+      return dispatch('fetchJobs')
     }
   },
   

@@ -80,6 +80,17 @@
               <span class="job-location">{{ job.city || job.province || '未知地区' }}</span>
               <span class="job-date">{{ formatDate(job.publish_date) }}</span>
             </div>
+            <div class="job-tags" v-if="job.tags && job.tags.length">
+              <el-tag 
+                v-for="(tag, index) in parseTags(job.tags)" 
+                :key="index"
+                size="mini" 
+                type="success" 
+                effect="plain"
+                class="job-tag">
+                {{ tag }}
+              </el-tag>
+            </div>
           </div>
           
           <div class="pagination-container">
@@ -234,6 +245,25 @@ export default {
       if (!date) return '未知日期'
       const formattedDate = new Date(date).toLocaleDateString()
       return formattedDate
+    },
+    
+    parseTags(tags) {
+      // 处理标签数据，可能是字符串或数组
+      if (!tags) return []
+      
+      if (typeof tags === 'string') {
+        try {
+          // 尝试解析JSON字符串
+          return JSON.parse(tags)
+        } catch (e) {
+          // 如果不是有效的JSON，则当做单个标签处理
+          return [tags]
+        }
+      } else if (Array.isArray(tags)) {
+        return tags
+      }
+      
+      return []
     }
   }
 }
@@ -306,6 +336,15 @@ export default {
 .job-info {
   display: flex;
   align-items: center;
+}
+
+.job-tags {
+  margin-top: 10px;
+}
+
+.job-tag {
+  margin-right: 5px;
+  margin-bottom: 5px;
 }
 
 .job-location, .job-date {

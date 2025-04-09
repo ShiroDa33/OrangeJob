@@ -27,6 +27,7 @@ class Job(models.Model):
     requirement = models.TextField(verbose_name='职位要求', null=True, blank=True)
     publish_date = models.DateField(verbose_name='发布日期', null=True, blank=True)
     source_url = models.URLField(verbose_name='来源链接', null=True, blank=True)
+    tags = models.JSONField(verbose_name='职位标签', null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True, verbose_name='创建时间')
     updated_at = models.DateTimeField(auto_now=True, verbose_name='更新时间')
     

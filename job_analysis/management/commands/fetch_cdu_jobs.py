@@ -15,7 +15,7 @@ class Command(BaseCommand):
         self.stdout.write('清空现有数据...')
         Job.objects.all().delete()
         Company.objects.all().delete()
-        
+            
         # 设置爬取的页数
         total_pages = 5  # 默认爬取5页数据
         
@@ -219,7 +219,20 @@ class Command(BaseCommand):
                     requirement += job_data.get('content', '')
                 
                 # 源链接
-                source_url = f"https://jy.cdu.edu.cn/Zhaopin/showZhiwei.html?id={job_data.get('id', '')}"
+                source_url = f"https://jy.cdu.edu.cn/Zhaopin/zhiweiDetail.html?id={job_data.get('id', '')}"
+                
+                # 提取福利标签
+                tags = []
+                
+                # 从tagsList字段获取福利标签
+                tag_list = job_data.get('tagsList', [])
+                if tag_list and isinstance(tag_list, list):
+                    for tag_item in tag_list:
+                        if isinstance(tag_item, dict) and 'title' in tag_item:
+                            tags.append(tag_item['title'])
+                            
+                # 输出调试信息
+                self.stdout.write(f"职位: {title}, 标签数量: {len(tags)}, 标签: {tags}")
                 
                 # 创建职位
                 Job.objects.create(
@@ -233,7 +246,8 @@ class Command(BaseCommand):
                     description=description,
                     requirement=requirement,
                     publish_date=publish_date,
-                    source_url=source_url
+                    source_url=source_url,
+                    tags=tags
                 )
                 
                 count += 1

@@ -36,6 +36,14 @@ class Command(BaseCommand):
             '四川': ['成都', '绵阳', '德阳', '自贡', '宜宾'],
         }
         
+        # 可能的福利标签列表
+        benefits = [
+            '五险一金', '年终奖', '带薪年假', '节日福利', '免费班车', 
+            '定期体检', '员工旅游', '餐补', '房补', '通讯补贴',
+            '弹性工作', '股票期权', '交通补贴', '高温补贴', '全勤奖',
+            '加班补助', '团队建设', '免费培训', '晋升空间', '免费零食'
+        ]
+        
         # 创建公司
         self.stdout.write('创建公司数据...')
         companies = []
@@ -75,6 +83,10 @@ class Command(BaseCommand):
             days_ago = random.randint(0, 90)
             publish_date = date.today() - timedelta(days=days_ago)
             
+            # 随机选择2-5个福利标签
+            tag_count = random.randint(2, 5)
+            job_benefits = random.sample(benefits, tag_count)
+            
             # 创建职位
             job = Job.objects.create(
                 title=f"{job_type}工程师" if "开发" in job_type else job_type,
@@ -87,7 +99,8 @@ class Command(BaseCommand):
                 description=f"这是一个{job_type}职位的描述。我们正在寻找有经验的{job_type}人才加入我们的团队。",
                 requirement=f"【岗位要求】\n1. 相关专业本科及以上学历\n2. 具有2年以上{job_type}相关经验\n3. 良好的沟通能力和团队协作精神",
                 publish_date=publish_date,
-                source_url=f"https://example.com/jobs/{i+1}"
+                source_url=f"https://example.com/jobs/{i+1}",
+                tags=job_benefits
             )
             
             self.stdout.write(f'创建职位: {job.title} - {job.company.name}')

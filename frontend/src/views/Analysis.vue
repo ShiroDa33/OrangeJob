@@ -84,7 +84,7 @@ import { mapGetters } from 'vuex'
 import * as echarts from 'echarts'
 
 export default {
-  name: 'AnalysisPage',
+  name: 'AnalysisView',
   
   data() {
     return {

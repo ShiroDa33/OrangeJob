@@ -43,7 +43,7 @@
 import { mapGetters } from 'vuex'
 
 export default {
-  name: 'HomePage',
+  name: 'HomeView',
   
   computed: {
     ...mapGetters(['jobList', 'isLoading']),

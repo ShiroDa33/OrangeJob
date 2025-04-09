@@ -8,6 +8,7 @@ from ..models import Company, Job, JobAnalysis
 from .serializers import CompanySerializer, JobSerializer, JobAnalysisSerializer
 from ..utils.data_analyzer import JobDataAnalyzer
 from ..crawler.crawler_manager import CrawlerManager
+import json
 
 class StandardResultsSetPagination(PageNumberPagination):
     """标准分页类"""
@@ -82,6 +83,18 @@ class JobViewSet(viewsets.ReadOnlyModelViewSet):
                 Q(description__icontains=keyword) | 
                 Q(requirement__icontains=keyword)
             )
+            
+        # 筛选标签
+        tags = self.request.query_params.get('tags')
+        if tags:
+            try:
+                tags_list = json.loads(tags)
+                if tags_list and len(tags_list) > 0:
+                    for tag in tags_list:
+                        queryset = queryset.filter(tags__icontains=tag)
+            except json.JSONDecodeError:
+                # 如果解析失败，尝试作为单个标签处理
+                queryset = queryset.filter(tags__icontains=tags)
             
         return queryset
     
