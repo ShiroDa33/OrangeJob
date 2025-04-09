@@ -2,11 +2,18 @@ from rest_framework import viewsets, filters, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
+from rest_framework.pagination import PageNumberPagination
 from django.db.models import Q
 from ..models import Company, Job, JobAnalysis
 from .serializers import CompanySerializer, JobSerializer, JobAnalysisSerializer
 from ..utils.data_analyzer import JobDataAnalyzer
 from ..crawler.crawler_manager import CrawlerManager
+
+class StandardResultsSetPagination(PageNumberPagination):
+    """标准分页类"""
+    page_size = 10
+    page_size_query_param = 'page_size'
+    max_page_size = 100
 
 class CompanyViewSet(viewsets.ReadOnlyModelViewSet):
     """公司信息视图集"""
@@ -17,6 +24,7 @@ class CompanyViewSet(viewsets.ReadOnlyModelViewSet):
     search_fields = ['name', 'industry']
     ordering_fields = ['name']
     ordering = ['name']
+    pagination_class = StandardResultsSetPagination
 
 class JobViewSet(viewsets.ReadOnlyModelViewSet):
     """职位信息视图集"""
@@ -27,6 +35,7 @@ class JobViewSet(viewsets.ReadOnlyModelViewSet):
     search_fields = ['title', 'company__name', 'job_type', 'province', 'city']
     ordering_fields = ['publish_date', 'salary_min', 'company__name']
     ordering = ['-publish_date']
+    pagination_class = StandardResultsSetPagination
     
     def get_queryset(self):
         queryset = Job.objects.all()
