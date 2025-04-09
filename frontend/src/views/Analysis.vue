@@ -1,0 +1,541 @@
+<template>
+  <div class="analysis-container">
+    <h1 class="page-title">招聘数据分析</h1>
+    
+    <div v-if="loading" class="loading-container">
+      <el-skeleton :rows="20" animated />
+    </div>
+    <div v-else>
+      <!-- 行业分布分析 -->
+      <el-card class="chart-card">
+        <div slot="header" class="chart-header">
+          <span>行业分布分析</span>
+          <el-select v-model="industryChartType" size="small" style="width: 120px;">
+            <el-option label="饼图" value="pie"></el-option>
+            <el-option label="柱状图" value="bar"></el-option>
+          </el-select>
+        </div>
+        <div class="chart-container">
+          <div v-if="!industryData" class="empty-data">
+            <el-empty description="暂无行业分布数据"></el-empty>
+          </div>
+          <div v-else ref="industryChart" class="chart"></div>
+        </div>
+      </el-card>
+      
+      <!-- 薪资分布分析 -->
+      <el-card class="chart-card">
+        <div slot="header">
+          <span>薪资分布分析</span>
+        </div>
+        <div class="chart-container">
+          <div v-if="!salaryData" class="empty-data">
+            <el-empty description="暂无薪资分布数据"></el-empty>
+          </div>
+          <div v-else ref="salaryChart" class="chart"></div>
+        </div>
+      </el-card>
+      
+      <!-- 地区分布分析 -->
+      <el-card class="chart-card">
+        <div slot="header" class="chart-header">
+          <span>地区分布分析</span>
+          <el-select v-model="selectedProvince" size="small" style="width: 120px;">
+            <el-option label="全部省份" value=""></el-option>
+            <el-option 
+              v-for="province in provinceOptions" 
+              :key="province" 
+              :label="province" 
+              :value="province">
+            </el-option>
+          </el-select>
+        </div>
+        <div class="chart-container">
+          <div v-if="!locationData" class="empty-data">
+            <el-empty description="暂无地区分布数据"></el-empty>
+          </div>
+          <template v-else>
+            <div class="chart-row">
+              <div ref="provinceChart" class="chart" style="height: 400px;"></div>
+              <div v-if="selectedProvince && cityData" ref="cityChart" class="chart" style="height: 400px;"></div>
+            </div>
+          </template>
+        </div>
+      </el-card>
+      
+      <!-- 岗位类型分析 -->
+      <el-card class="chart-card">
+        <div slot="header">
+          <span>岗位类型分析</span>
+        </div>
+        <div class="chart-container">
+          <div v-if="!jobTypeData" class="empty-data">
+            <el-empty description="暂无岗位类型数据"></el-empty>
+          </div>
+          <div v-else ref="jobTypeChart" class="chart"></div>
+        </div>
+      </el-card>
+    </div>
+  </div>
+</template>
+
+<script>
+import { mapGetters } from 'vuex'
+import * as echarts from 'echarts'
+
+export default {
+  name: 'AnalysisPage',
+  
+  data() {
+    return {
+      industryChartType: 'pie',
+      selectedProvince: '',
+      charts: {
+        industry: null,
+        salary: null,
+        province: null,
+        city: null,
+        jobType: null
+      }
+    }
+  },
+  
+  computed: {
+    ...mapGetters([
+      'industryAnalysis',
+      'salaryAnalysis',
+      'locationAnalysis',
+      'jobTypeAnalysis',
+      'isLoading'
+    ]),
+    
+    loading() {
+      return this.isLoading
+    },
+    
+    industryData() {
+      return this.industryAnalysis
+    },
+    
+    salaryData() {
+      return this.salaryAnalysis
+    },
+    
+    locationData() {
+      return this.locationAnalysis
+    },
+    
+    jobTypeData() {
+      return this.jobTypeAnalysis
+    },
+    
+    provinceOptions() {
+      if (!this.locationData || !this.locationData.province) return []
+      return this.locationData.province.categories.filter(p => p !== '其他')
+    },
+    
+    cityData() {
+      if (!this.locationData || !this.locationData.city || !this.selectedProvince) return null
+      return this.locationData.city[this.selectedProvince]
+    }
+  },
+  
+  watch: {
+    industryData() {
+      this.$nextTick(() => {
+        this.renderIndustryChart()
+      })
+    },
+    
+    salaryData() {
+      this.$nextTick(() => {
+        this.renderSalaryChart()
+      })
+    },
+    
+    locationData() {
+      this.$nextTick(() => {
+        this.renderProvinceChart()
+      })
+    },
+    
+    jobTypeData() {
+      this.$nextTick(() => {
+        this.renderJobTypeChart()
+      })
+    },
+    
+    industryChartType() {
+      this.$nextTick(() => {
+        this.renderIndustryChart()
+      })
+    },
+    
+    selectedProvince() {
+      this.$nextTick(() => {
+        if (this.selectedProvince && this.cityData) {
+          this.renderCityChart()
+        }
+      })
+    }
+  },
+  
+  created() {
+    this.fetchAnalysisData()
+  },
+  
+  mounted() {
+    // 窗口大小变化时重绘图表
+    window.addEventListener('resize', this.resizeCharts)
+  },
+  
+  beforeDestroy() {
+    // 销毁事件监听和图表实例
+    window.removeEventListener('resize', this.resizeCharts)
+    Object.values(this.charts).forEach(chart => {
+      if (chart) chart.dispose()
+    })
+  },
+  
+  methods: {
+    fetchAnalysisData() {
+      this.$store.dispatch('fetchAllAnalysisData')
+    },
+    
+    resizeCharts() {
+      Object.values(this.charts).forEach(chart => {
+        if (chart) chart.resize()
+      })
+    },
+    
+    renderIndustryChart() {
+      if (!this.industryData || !this.$refs.industryChart) return
+      
+      if (this.charts.industry) {
+        this.charts.industry.dispose()
+      }
+      
+      this.charts.industry = echarts.init(this.$refs.industryChart)
+      
+      let option = {}
+      if (this.industryChartType === 'pie') {
+        option = {
+          title: {
+            text: '行业分布',
+            left: 'center'
+          },
+          tooltip: {
+            trigger: 'item',
+            formatter: '{a} <br/>{b}: {c} ({d}%)'
+          },
+          legend: {
+            orient: 'vertical',
+            left: 'left',
+            data: this.industryData.categories
+          },
+          series: [
+            {
+              name: '行业分布',
+              type: 'pie',
+              radius: ['40%', '70%'],
+              avoidLabelOverlap: false,
+              label: {
+                show: false,
+                position: 'center'
+              },
+              emphasis: {
+                label: {
+                  show: true,
+                  fontSize: '16',
+                  fontWeight: 'bold'
+                }
+              },
+              labelLine: {
+                show: false
+              },
+              data: this.industryData.categories.map((name, index) => ({
+                value: this.industryData.data[index],
+                name
+              }))
+            }
+          ]
+        }
+      } else {
+        option = {
+          title: {
+            text: '行业分布',
+            left: 'center'
+          },
+          tooltip: {
+            trigger: 'axis',
+            axisPointer: {
+              type: 'shadow'
+            }
+          },
+          xAxis: {
+            type: 'category',
+            data: this.industryData.categories,
+            axisLabel: {
+              rotate: 45,
+              interval: 0
+            }
+          },
+          yAxis: {
+            type: 'value'
+          },
+          series: [
+            {
+              name: '公司数量',
+              type: 'bar',
+              data: this.industryData.data,
+              itemStyle: {
+                color: '#ff9900'
+              }
+            }
+          ]
+        }
+      }
+      
+      this.charts.industry.setOption(option)
+    },
+    
+    renderSalaryChart() {
+      if (!this.salaryData || !this.$refs.salaryChart) return
+      
+      if (this.charts.salary) {
+        this.charts.salary.dispose()
+      }
+      
+      this.charts.salary = echarts.init(this.$refs.salaryChart)
+      
+      const option = {
+        title: {
+          text: '薪资分布',
+          left: 'center'
+        },
+        tooltip: {
+          trigger: 'axis',
+          axisPointer: {
+            type: 'shadow'
+          }
+        },
+        xAxis: {
+          type: 'category',
+          data: this.salaryData.categories
+        },
+        yAxis: {
+          type: 'value'
+        },
+        series: [
+          {
+            name: '职位数量',
+            type: 'bar',
+            data: this.salaryData.data,
+            itemStyle: {
+              color: '#67c23a'
+            }
+          }
+        ]
+      }
+      
+      this.charts.salary.setOption(option)
+    },
+    
+    renderProvinceChart() {
+      if (!this.locationData || !this.$refs.provinceChart) return
+      
+      if (this.charts.province) {
+        this.charts.province.dispose()
+      }
+      
+      this.charts.province = echarts.init(this.$refs.provinceChart)
+      
+      const option = {
+        title: {
+          text: '省份分布',
+          left: 'center'
+        },
+        tooltip: {
+          trigger: 'item',
+          formatter: '{a} <br/>{b}: {c} ({d}%)'
+        },
+        legend: {
+          orient: 'vertical',
+          left: 'left',
+          data: this.locationData.province.categories
+        },
+        series: [
+          {
+            name: '省份分布',
+            type: 'pie',
+            radius: '55%',
+            center: ['50%', '60%'],
+            data: this.locationData.province.categories.map((name, index) => ({
+              value: this.locationData.province.data[index],
+              name
+            })),
+            emphasis: {
+              itemStyle: {
+                shadowBlur: 10,
+                shadowOffsetX: 0,
+                shadowColor: 'rgba(0, 0, 0, 0.5)'
+              }
+            }
+          }
+        ]
+      }
+      
+      this.charts.province.setOption(option)
+      
+      // 点击省份切换选中的省份
+      this.charts.province.on('click', params => {
+        if (params.name !== '其他') {
+          this.selectedProvince = params.name
+        }
+      })
+    },
+    
+    renderCityChart() {
+      if (!this.cityData || !this.$refs.cityChart) return
+      
+      if (this.charts.city) {
+        this.charts.city.dispose()
+      }
+      
+      this.charts.city = echarts.init(this.$refs.cityChart)
+      
+      const option = {
+        title: {
+          text: `${this.selectedProvince}城市分布`,
+          left: 'center'
+        },
+        tooltip: {
+          trigger: 'axis',
+          axisPointer: {
+            type: 'shadow'
+          }
+        },
+        xAxis: {
+          type: 'category',
+          data: this.cityData.categories,
+          axisLabel: {
+            rotate: 45,
+            interval: 0
+          }
+        },
+        yAxis: {
+          type: 'value'
+        },
+        series: [
+          {
+            name: '职位数量',
+            type: 'bar',
+            data: this.cityData.data,
+            itemStyle: {
+              color: '#409eff'
+            }
+          }
+        ]
+      }
+      
+      this.charts.city.setOption(option)
+    },
+    
+    renderJobTypeChart() {
+      if (!this.jobTypeData || !this.$refs.jobTypeChart) return
+      
+      if (this.charts.jobType) {
+        this.charts.jobType.dispose()
+      }
+      
+      this.charts.jobType = echarts.init(this.$refs.jobTypeChart)
+      
+      const option = {
+        title: {
+          text: '岗位类型分布',
+          left: 'center'
+        },
+        tooltip: {
+          trigger: 'item',
+          formatter: '{a} <br/>{b}: {c} ({d}%)'
+        },
+        legend: {
+          orient: 'vertical',
+          left: 'left',
+          data: this.jobTypeData.categories
+        },
+        series: [
+          {
+            name: '岗位类型',
+            type: 'pie',
+            radius: '55%',
+            center: ['50%', '60%'],
+            data: this.jobTypeData.categories.map((name, index) => ({
+              value: this.jobTypeData.data[index],
+              name
+            })),
+            emphasis: {
+              itemStyle: {
+                shadowBlur: 10,
+                shadowOffsetX: 0,
+                shadowColor: 'rgba(0, 0, 0, 0.5)'
+              }
+            }
+          }
+        ]
+      }
+      
+      this.charts.jobType.setOption(option)
+    }
+  }
+}
+</script>
+
+<style scoped>
+.analysis-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.loading-container {
+  padding: 20px;
+}
+
+.chart-card {
+  margin-bottom: 20px;
+}
+
+.chart-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.chart-container {
+  padding: 10px;
+}
+
+.chart {
+  height: 400px;
+}
+
+.chart-row {
+  display: flex;
+  flex-wrap: wrap;
+  margin: -10px;
+}
+
+.chart-row .chart {
+  flex: 1;
+  min-width: 300px;
+  margin: 10px;
+}
+
+.empty-data {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 300px;
+}
+</style> 
