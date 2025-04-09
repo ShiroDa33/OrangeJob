@@ -141,25 +141,66 @@ class Command(BaseCommand):
                 if not title:
                     continue
                 
-                # 提取薪资信息
-                salary_text = job_data.get('xinzi', '')
-                salary_min, salary_max = self.parse_salary(salary_text)
-                
-                # 提取地区信息
-                province = job_data.get('province_id_name', '')
-                city = job_data.get('city_id_name', '')
-                
                 # 提取职位类型
                 job_type = job_data.get('cate_id1_name', '') or job_data.get('dalei_id_name', '')
                 
                 # 提取发布日期
-                publish_date_str = job_data.get('addtime1', '')
+                # 优先使用examine_time时间戳
                 publish_date = None
-                if publish_date_str:
+                if job_data.get('examine_time'):
                     try:
-                        publish_date = datetime.strptime(publish_date_str, '%Y-%m-%d').date()
+                        # 将时间戳转换为日期
+                        timestamp = int(job_data.get('examine_time'))
+                        publish_date = datetime.fromtimestamp(timestamp).date()
+                    except Exception as e:
+                        self.stdout.write(f"解析examine_time失败: {e}")
+                
+                # 如果examine_time解析失败，尝试使用addtime1
+                if not publish_date and job_data.get('addtime1'):
+                    try:
+                        publish_date = datetime.strptime(job_data.get('addtime1'), '%Y-%m-%d').date()
+                    except Exception as e:
+                        self.stdout.write(f"解析addtime1失败: {e}")
+                
+                # 如果还是失败，尝试使用addtime时间戳
+                if not publish_date and job_data.get('addtime'):
+                    try:
+                        timestamp = int(job_data.get('addtime'))
+                        publish_date = datetime.fromtimestamp(timestamp).date()
+                    except Exception as e:
+                        self.stdout.write(f"解析addtime失败: {e}")
+                
+                # 提取薪资信息
+                salary_min = None
+                salary_max = None
+                
+                # 优先使用API返回的薪资范围
+                if job_data.get('salary_floor') is not None:
+                    try:
+                        salary_min = int(job_data.get('salary_floor'))
                     except:
                         pass
+                
+                if job_data.get('salay_ceil') is not None:
+                    try:
+                        salary_max = int(job_data.get('salay_ceil'))
+                    except:
+                        pass
+                
+                # 如果API返回的薪资无效，尝试解析薪资文本
+                if (salary_min is None or salary_max is None) and job_data.get('xinzi'):
+                    salary_text = job_data.get('xinzi', '')
+                    parsed_min, parsed_max = self.parse_salary(salary_text)
+                    
+                    if salary_min is None:
+                        salary_min = parsed_min
+                    
+                    if salary_max is None:
+                        salary_max = parsed_max
+                
+                # 提取地区信息
+                province = job_data.get('province_id_name', '')
+                city = job_data.get('city_id_name', '')
                 
                 # 构建描述和要求
                 description = f"职位名称：{title}\n"

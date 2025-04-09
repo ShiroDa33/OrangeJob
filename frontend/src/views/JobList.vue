@@ -78,7 +78,7 @@
             <div class="job-info">
               <el-tag size="small">{{ job.job_type || '未知' }}</el-tag>
               <span class="job-location">{{ job.city || job.province || '未知地区' }}</span>
-              <span class="job-date">{{ job.publish_date || '未知日期' }}</span>
+              <span class="job-date">{{ formatDate(job.publish_date) }}</span>
             </div>
           </div>
           
@@ -170,7 +170,17 @@ export default {
     
     formatSalary(salary) {
       if (!salary) return '面议'
-      return salary >= 1000 ? (salary / 1000).toFixed(1) + 'K' : salary
+      
+      // 确保数值格式化为数字
+      const salaryNum = Number(salary)
+      if (isNaN(salaryNum)) return salary
+      
+      // 如果薪资大于等于1000，则显示为xK格式
+      if (salaryNum >= 1000) {
+        return (salaryNum / 1000).toFixed(1) + 'K'
+      }
+      
+      return salary
     },
     
     handleSearch() {
@@ -218,6 +228,12 @@ export default {
     
     handleJobClick(job) {
       this.$router.push(`/jobs/${job.id}`)
+    },
+    
+    formatDate(date) {
+      if (!date) return '未知日期'
+      const formattedDate = new Date(date).toLocaleDateString()
+      return formattedDate
     }
   }
 }
