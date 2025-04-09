@@ -18,10 +18,10 @@
         <el-form-item label="岗位类型">
           <el-select v-model="filters.jobType" placeholder="选择岗位类型" clearable>
             <el-option
-              v-for="item in jobTypes"
-              :key="item.value"
-              :label="item.label"
-              :value="item.value">
+              v-for="type in jobTypeOptions"
+              :key="type"
+              :label="type"
+              :value="type">
             </el-option>
           </el-select>
         </el-form-item>
@@ -131,14 +131,6 @@ export default {
         { value: '四川', label: '四川' },
         { value: '浙江', label: '浙江' }
       ],
-      jobTypes: [
-        { value: '技术', label: '技术' },
-        { value: '产品', label: '产品' },
-        { value: '设计', label: '设计' },
-        { value: '运营', label: '运营' },
-        { value: '市场', label: '市场' },
-        { value: '销售', label: '销售' }
-      ],
       salaryRanges: [
         { value: '0,5000', label: '5K以下' },
         { value: '5000,10000', label: '5K-10K' },
@@ -154,7 +146,8 @@ export default {
     ...mapGetters([
       'jobList',
       'isLoading',
-      'currentPagination'
+      'currentPagination',
+      'availableJobTypes'
     ]),
     
     jobs() {
@@ -167,16 +160,25 @@ export default {
     
     pagination() {
       return this.currentPagination
+    },
+    
+    jobTypeOptions() {
+      return this.availableJobTypes
     }
   },
   
   created() {
     this.fetchJobs()
+    this.fetchJobTypes()
   },
   
   methods: {
     fetchJobs() {
       this.$store.dispatch('fetchJobs')
+    },
+    
+    fetchJobTypes() {
+      this.$store.dispatch('fetchJobTypes')
     },
     
     formatSalary(salary) {

@@ -18,7 +18,8 @@ export default new Vuex.Store({
       jobType: '',
       salaryMin: null,
       salaryMax: null,
-      tags: []
+      tags: [],
+      personnel_type: ''
     },
     pagination: {
       currentPage: 1,
@@ -30,7 +31,9 @@ export default new Vuex.Store({
       salary: null,
       location: null,
       jobType: null
-    }
+    },
+    personnelTypes: [], // 存储所有可用的人员类型
+    jobTypes: [] // 存储所有可用的岗位类型
   },
   
   mutations: {
@@ -54,6 +57,12 @@ export default new Vuex.Store({
     },
     SET_ANALYSIS_DATA(state, { key, data }) {
       state.analysisData[key] = data
+    },
+    SET_PERSONNEL_TYPES(state, types) {
+      state.personnelTypes = types
+    },
+    SET_JOB_TYPES(state, types) {
+      state.jobTypes = types
     }
   },
   
@@ -235,6 +244,80 @@ export default new Vuex.Store({
       commit('SET_FILTERS', { tags })
       commit('SET_PAGINATION', { currentPage: 1 }) // 重置到第一页
       return dispatch('fetchJobs')
+    },
+    
+    // 获取所有可用的人员类型
+    async fetchPersonnelTypes({ commit, state }) {
+      try {
+        // 如果已经有数据且不为空，直接返回
+        if (state.personnelTypes.length > 0) {
+          return state.personnelTypes
+        }
+        
+        commit('SET_LOADING', true)
+        
+        // 使用API获取所有职位数据，提取不重复的人员类型
+        const response = await api.getJobs({ page: 1, page_size: 100 })
+        
+        let jobs = []
+        if (Array.isArray(response)) {
+          jobs = response
+        } else if (response.results && Array.isArray(response.results)) {
+          jobs = response.results
+        } else if (response.data && Array.isArray(response.data)) {
+          jobs = response.data
+        }
+        
+        // 从所有职位中提取不重复的人员类型
+        const types = [...new Set(jobs.map(job => job.personnel_type).filter(Boolean))].sort()
+        
+        console.log('获取到可用的人员类型:', types)
+        commit('SET_PERSONNEL_TYPES', types)
+        
+        return types
+      } catch (error) {
+        console.error('获取人员类型失败:', error)
+        return []
+      } finally {
+        commit('SET_LOADING', false)
+      }
+    },
+    
+    // 获取所有可用的岗位类型（dalei_id_name）
+    async fetchJobTypes({ commit, state }) {
+      try {
+        // 如果已经有数据且不为空，直接返回
+        if (state.jobTypes.length > 0) {
+          return state.jobTypes
+        }
+        
+        commit('SET_LOADING', true)
+        
+        // 使用API获取所有职位数据，提取不重复的岗位类型
+        const response = await api.getJobs({ page: 1, page_size: 100 })
+        
+        let jobs = []
+        if (Array.isArray(response)) {
+          jobs = response
+        } else if (response.results && Array.isArray(response.results)) {
+          jobs = response.results
+        } else if (response.data && Array.isArray(response.data)) {
+          jobs = response.data
+        }
+        
+        // 从所有职位中提取不重复的岗位类型（dalei_id_name）
+        const types = [...new Set(jobs.map(job => job.job_type).filter(Boolean))].sort()
+        
+        console.log('获取到可用的岗位类型:', types)
+        commit('SET_JOB_TYPES', types)
+        
+        return types
+      } catch (error) {
+        console.error('获取岗位类型失败:', error)
+        return []
+      } finally {
+        commit('SET_LOADING', false)
+      }
     }
   },
   
@@ -249,6 +332,8 @@ export default new Vuex.Store({
     industryAnalysis: state => state.analysisData.industry,
     salaryAnalysis: state => state.analysisData.salary,
     locationAnalysis: state => state.analysisData.location,
-    jobTypeAnalysis: state => state.analysisData.jobType
+    jobTypeAnalysis: state => state.analysisData.jobType,
+    availablePersonnelTypes: state => state.personnelTypes,
+    availableJobTypes: state => state.jobTypes
   }
 }) 
