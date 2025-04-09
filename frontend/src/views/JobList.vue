@@ -124,13 +124,6 @@ export default {
         jobType: '',
         salaryRange: ''
       },
-      provinces: [
-        { value: '北京', label: '北京' },
-        { value: '上海', label: '上海' },
-        { value: '广东', label: '广东' },
-        { value: '四川', label: '四川' },
-        { value: '浙江', label: '浙江' }
-      ],
       salaryRanges: [
         { value: '0,5000', label: '5K以下' },
         { value: '5000,10000', label: '5K-10K' },
@@ -147,7 +140,8 @@ export default {
       'jobList',
       'isLoading',
       'currentPagination',
-      'availableJobTypes'
+      'availableJobTypes',
+      'availableProvinces'
     ]),
     
     jobs() {
@@ -164,12 +158,17 @@ export default {
     
     jobTypeOptions() {
       return this.availableJobTypes
+    },
+    
+    provinces() {
+      return this.availableProvinces
     }
   },
   
   created() {
     this.fetchJobs()
     this.fetchJobTypes()
+    this.fetchProvinces()
   },
   
   methods: {
@@ -179,6 +178,10 @@ export default {
     
     fetchJobTypes() {
       this.$store.dispatch('fetchJobTypes')
+    },
+    
+    fetchProvinces() {
+      this.$store.dispatch('fetchProvinces')
     },
     
     formatSalary(salary) {
@@ -203,14 +206,16 @@ export default {
         [salaryMin, salaryMax] = this.filters.salaryRange.split(',')
       }
       
-      // 构建筛选条件
+      // 构建筛选条件，确保传递正确的省份格式
       const filters = {
         keyword: this.filters.keyword,
-        province: this.filters.province,
+        province: this.filters.province, // 数据库中是完整名称，如"广东省"
         job_type: this.filters.jobType,
         salary_min: salaryMin,
         salary_max: salaryMax
       }
+      
+      console.log('搜索参数:', filters)
       
       // 设置排序
       if (this.sortBy) {

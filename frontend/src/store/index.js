@@ -33,7 +33,8 @@ export default new Vuex.Store({
       jobType: null
     },
     personnelTypes: [], // 存储所有可用的人员类型
-    jobTypes: [] // 存储所有可用的岗位类型
+    jobTypes: [], // 存储所有可用的岗位类型
+    provinces: [] // 存储所有可用的省份
   },
   
   mutations: {
@@ -63,6 +64,9 @@ export default new Vuex.Store({
     },
     SET_JOB_TYPES(state, types) {
       state.jobTypes = types
+    },
+    SET_PROVINCES(state, provinces) {
+      state.provinces = provinces
     }
   },
   
@@ -76,9 +80,19 @@ export default new Vuex.Store({
         // 构建查询参数
         const params = {
           page: state.pagination.currentPage,
-          page_size: state.pagination.pageSize,
-          ...state.filters
+          page_size: state.pagination.pageSize
         }
+        
+        // 添加筛选条件
+        if (state.filters.keyword) params.keyword = state.filters.keyword
+        if (state.filters.province) params.province = state.filters.province
+        if (state.filters.city) params.city = state.filters.city
+        if (state.filters.industry) params.industry = state.filters.industry
+        if (state.filters.job_type) params.job_type = state.filters.job_type
+        if (state.filters.personnel_type) params.personnel_type = state.filters.personnel_type
+        if (state.filters.salary_min) params.salary_min = state.filters.salary_min
+        if (state.filters.salary_max) params.salary_max = state.filters.salary_max
+        if (state.filters.ordering) params.ordering = state.filters.ordering
         
         // 处理tags参数 - 如果有标签，将其转换为后端可接受的格式
         if (state.filters.tags && state.filters.tags.length > 0) {
@@ -318,6 +332,45 @@ export default new Vuex.Store({
       } finally {
         commit('SET_LOADING', false)
       }
+    },
+    
+    // 获取所有可用的省份
+    async fetchProvinces({ commit, state }) {
+      try {
+        // 如果已经有数据且不为空，直接返回
+        if (state.provinces.length > 0) {
+          return state.provinces
+        }
+        
+        commit('SET_LOADING', true)
+        
+        // 使用API获取所有职位数据，提取不重复的省份
+        const response = await api.getJobs({ page: 1, page_size: 100 })
+        
+        let jobs = []
+        if (Array.isArray(response)) {
+          jobs = response
+        } else if (response.results && Array.isArray(response.results)) {
+          jobs = response.results
+        } else if (response.data && Array.isArray(response.data)) {
+          jobs = response.data
+        }
+        
+        // 从所有职位中提取不重复的省份
+        const provinces = [...new Set(jobs.map(job => job.province).filter(Boolean))].sort().map(province => {
+          return { value: province, label: province }
+        })
+        
+        console.log('获取到可用的省份:', provinces)
+        commit('SET_PROVINCES', provinces)
+        
+        return provinces
+      } catch (error) {
+        console.error('获取省份失败:', error)
+        return []
+      } finally {
+        commit('SET_LOADING', false)
+      }
     }
   },
   
@@ -334,6 +387,7 @@ export default new Vuex.Store({
     locationAnalysis: state => state.analysisData.location,
     jobTypeAnalysis: state => state.analysisData.jobType,
     availablePersonnelTypes: state => state.personnelTypes,
-    availableJobTypes: state => state.jobTypes
+    availableJobTypes: state => state.jobTypes,
+    availableProvinces: state => state.provinces
   }
 }) 
