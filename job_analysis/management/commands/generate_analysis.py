@@ -1,8 +1,9 @@
 from django.core.management.base import BaseCommand
 from job_analysis.models import Job, JobAnalysis
-from django.db.models import Count
+from django.db.models import Count, Avg
 from collections import Counter
 import json
+import re
 
 class Command(BaseCommand):
     help = '生成职位分析数据'
@@ -25,6 +26,9 @@ class Command(BaseCommand):
         # 4. 岗位类型分析
         self.generate_job_type_analysis()
         
+        # 5. 学历-薪资分析
+        self.generate_education_salary_analysis()
+        
         self.stdout.write(self.style.SUCCESS('分析数据生成完成!'))
     
     def generate_industry_analysis(self):
@@ -42,7 +46,7 @@ class Command(BaseCommand):
         
         # 创建分析记录
         JobAnalysis.objects.create(
-            analysis_type='industry',
+            analysis_type='industry_distribution',
             analysis_data={
                 'categories': categories,
                 'data': data
@@ -90,7 +94,7 @@ class Command(BaseCommand):
         
         # 创建分析记录
         JobAnalysis.objects.create(
-            analysis_type='salary',
+            analysis_type='salary_distribution',
             analysis_data={
                 'categories': salary_ranges,
                 'data': [range_counter[r] for r in salary_ranges]
@@ -143,7 +147,7 @@ class Command(BaseCommand):
         
         # 创建地区分析记录
         JobAnalysis.objects.create(
-            analysis_type='location',
+            analysis_type='location_distribution',
             analysis_data={
                 'province': {
                     'categories': province_categories,
@@ -170,11 +174,83 @@ class Command(BaseCommand):
         
         # 创建分析记录
         JobAnalysis.objects.create(
-            analysis_type='job_type',
+            analysis_type='job_type_distribution',
             analysis_data={
                 'categories': categories,
                 'data': data
             }
         )
         
-        self.stdout.write(f'已生成岗位类型分析，共{len(categories)}种岗位类型') 
+        self.stdout.write(f'已生成岗位类型分析，共{len(categories)}种岗位类型')
+        
+    def generate_education_salary_analysis(self):
+        """分析不同学历要求的平均薪资分布"""
+        # 排除没有薪资信息或描述的职位
+        jobs_with_salary = Job.objects.filter(
+            salary_min__isnull=False,
+            salary_max__isnull=False,
+            description__isnull=False
+        )
+        
+        # 常见学历类型
+        education_keywords = {
+            '博士及以上': ['博士及以上', '博士', '博士学历'],
+            '硕士及以上': ['硕士及以上', '硕士', '硕士学历', '研究生及以上', '研究生', '研究生学历'],
+            '本科及以上': ['本科及以上', '本科', '本科学历', '大学本科'],
+            '专科': ['大专及以上', '大专', '专科', '专科及以上'],
+            '高中': ['高中及以上', '高中', '中专及以上', '中专', '职高'],
+            '初中': ['初中及以上', '初中'],
+            '未标明': ['学历不限', '']
+        }
+        
+        # 初始化各学历类型的职位数量和薪资总和
+        education_data = {edu: {'count': 0, 'salary_sum': 0} for edu in education_keywords.keys()}
+        
+        # 遍历职位，判断学历要求并统计薪资
+        for job in jobs_with_salary:
+            description = job.description.lower() if job.description else ''
+            requirement = job.requirement.lower() if job.requirement else ''
+            text = description + ' ' + requirement
+            
+            # 识别职位所属的学历类型
+            education_type = '未标明'
+            for edu_type, keywords in education_keywords.items():
+                for keyword in keywords:
+                    if keyword in text:
+                        education_type = edu_type
+                        break
+                if education_type != '未标明':
+                    break
+            
+            # 计算平均薪资
+            avg_salary = (job.salary_min + job.salary_max) / 2
+            
+            # 更新统计数据
+            education_data[education_type]['count'] += 1
+            education_data[education_type]['salary_sum'] += avg_salary
+        
+        # 计算各学历类型的平均薪资并整理结果
+        result = []
+        for edu_type, data in education_data.items():
+            if data['count'] > 0:
+                avg_salary = data['salary_sum'] / data['count']
+                result.append({
+                    'education': edu_type,
+                    'avg_salary': int(avg_salary),
+                    'count': data['count']
+                })
+        
+        # 按平均薪资降序排序
+        result.sort(key=lambda x: x['avg_salary'], reverse=True)
+        
+        # 创建分析记录
+        JobAnalysis.objects.create(
+            analysis_type='education_salary_distribution',
+            analysis_data={
+                'categories': [item['education'] for item in result],
+                'data': [item['avg_salary'] for item in result],
+                'counts': [item['count'] for item in result]
+            }
+        )
+        
+        self.stdout.write(f'已生成学历-薪资分析，共{len(result)}种学历类型') 
