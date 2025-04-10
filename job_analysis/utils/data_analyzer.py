@@ -59,7 +59,7 @@ class JobDataAnalyzer:
             {'min': 10000, 'max': 15000, 'label': '10K-15K'},
             {'min': 15000, 'max': 20000, 'label': '15K-20K'},
             {'min': 20000, 'max': 30000, 'label': '20K-30K'},
-            {'min': 30000, 'max': float('inf'), 'label': '30K以上'}
+            {'min': 30000, 'max': 1000000, 'label': '30K以上'}
         ]
         
         # 统计每个薪资范围的职位数
