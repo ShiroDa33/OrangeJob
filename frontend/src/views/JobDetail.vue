@@ -87,7 +87,7 @@
       <!-- 相似职位推荐 -->
       <el-card class="similar-jobs-card">
         <div slot="header">
-          <span>相似职位推荐</span>
+          <span>相似职位推荐（{{ job.job_type }}）</span>
         </div>
         <div v-if="!similarJobs.length" class="empty-data">
           <el-empty description="暂无相似职位推荐"></el-empty>
@@ -160,6 +160,15 @@ export default {
     this.fetchJobDetail()
   },
   
+  watch: {
+    // 监听路由参数变化，当ID变化时重新获取数据
+    '$route.params.id': function(newId, oldId) {
+      if (newId !== oldId) {
+        this.fetchJobDetail()
+      }
+    }
+  },
+  
   methods: {
     async fetchJobDetail() {
       try {
@@ -171,39 +180,29 @@ export default {
     },
     
     async fetchSimilarJobs() {
-      // 这里是模拟数据，实际项目中应该从后端获取
-      // 可以根据当前职位的行业、类型等特征获取相似职位
-      setTimeout(() => {
-        this.similarJobs = [
-          {
-            id: 1,
-            title: '前端开发工程师',
-            company_name: '某科技有限公司',
-            province: '北京',
-            city: '海淀区',
-            salary_min: 15000,
-            salary_max: 25000
-          },
-          {
-            id: 2,
-            title: 'Web前端开发',
-            company_name: '某互联网公司',
-            province: '上海',
-            city: '浦东新区',
-            salary_min: 20000,
-            salary_max: 30000
-          },
-          {
-            id: 3,
-            title: 'JavaScript工程师',
-            company_name: '某网络科技公司',
-            province: '广东',
-            city: '深圳',
-            salary_min: 18000,
-            salary_max: 28000
-          }
-        ]
-      }, 500)
+      if (!this.job || !this.job.job_type) {
+        this.similarJobs = [];
+        return;
+      }
+      
+      try {
+        // 使用当前职位的dalei_id_name属性获取相似职位
+        const response = await this.$api.getSimilarJobs(this.jobId, this.job.job_type, 3);
+        
+        // 处理API响应
+        if (Array.isArray(response)) {
+          this.similarJobs = response;
+        } else if (response.results && Array.isArray(response.results)) {
+          this.similarJobs = response.results;
+        } else {
+          this.similarJobs = [];
+        }
+        
+        console.log('获取到相似职位:', this.similarJobs);
+      } catch (error) {
+        console.error('获取相似职位失败:', error);
+        this.similarJobs = [];
+      }
     },
     
     formatSalary(salary) {
@@ -235,7 +234,12 @@ export default {
     
     goToJob(id) {
       if (id === parseInt(this.jobId)) return
+      
+      // 切换到相似职位详情
       this.$router.push(`/jobs/${id}`)
+      
+      // 滚动到页面顶部
+      window.scrollTo(0, 0)
     }
   }
 }

@@ -41,6 +41,11 @@ class JobViewSet(viewsets.ReadOnlyModelViewSet):
     def get_queryset(self):
         queryset = Job.objects.all()
         
+        # 排除指定ID
+        exclude_id = self.request.query_params.get('exclude_id')
+        if exclude_id:
+            queryset = queryset.exclude(id=exclude_id)
+            
         # 筛选公司
         company = self.request.query_params.get('company')
         if company:

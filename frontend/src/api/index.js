@@ -81,6 +81,17 @@ export default {
     return service.get(`/jobs/${id}/`)
   },
   
+  getSimilarJobs(id, jobType, limit = 3) {
+    return service.get('/jobs/', { 
+      params: { 
+        job_type: jobType,
+        exclude_id: id,
+        page: 1,
+        page_size: limit
+      } 
+    })
+  },
+  
   // 公司相关接口
   getCompanies(params) {
     return service.get('/companies/', { params })
