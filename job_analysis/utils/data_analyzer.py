@@ -173,6 +173,88 @@ class JobDataAnalyzer:
             'data': [item['count'] for item in top_job_types]
         }
     
+    @staticmethod
+    def analyze_education_salary_distribution():
+        """分析不同学历要求的平均薪资分布
+        
+        Returns:
+            dict: 学历-薪资分布数据
+        """
+        # 排除没有薪资信息或描述的职位
+        jobs_with_salary = Job.objects.filter(
+            salary_min__isnull=False,
+            salary_max__isnull=False,
+            description__isnull=False
+        )
+        
+        # 定义常见学历关键词和优先级，用于识别和归类
+        education_patterns = [
+            r'博士及以上', r'博士', r'博士学历', 
+            r'硕士及以上', r'硕士', r'硕士学历', 
+            r'研究生及以上', r'研究生', r'研究生学历',
+            r'本科及以上', r'本科', r'本科学历', r'大学本科',
+            r'大专及以上', r'大专', r'专科', r'专科及以上', 
+            r'高中及以上', r'高中', r'中专及以上', r'中专', r'职高',
+            r'初中及以上', r'初中',
+            r'学历不限'
+        ]
+        
+        # 初始化结果存储
+        education_salary_data = {}
+        
+        # 遍历职位，提取学历要求并计算平均薪资
+        for job in jobs_with_salary:
+            # 计算平均薪资
+            avg_salary = (job.salary_min + job.salary_max) / 2
+            
+            # 从职位描述中提取学历要求
+            education_requirement = None
+            description = job.description or ""
+            
+            # 尝试查找各种学历表述
+            for pattern in education_patterns:
+                if pattern in description:
+                    education_requirement = pattern
+                    break
+            
+            # 如果没有找到明确的学历要求，则标记为"未标明"
+            if not education_requirement:
+                education_requirement = "未标明"
+            
+            # 更新统计数据
+            if education_requirement not in education_salary_data:
+                education_salary_data[education_requirement] = {
+                    'count': 0, 
+                    'total_salary': 0
+                }
+            
+            education_salary_data[education_requirement]['count'] += 1
+            education_salary_data[education_requirement]['total_salary'] += avg_salary
+        
+        # 计算每种学历要求的平均薪资并格式化结果
+        result = []
+        for edu, data in education_salary_data.items():
+            if data['count'] > 0:
+                avg_salary = round(data['total_salary'] / data['count'])
+                result.append({
+                    'education': edu,
+                    'avg_salary': avg_salary,
+                    'count': data['count']
+                })
+        
+        # 按平均薪资从高到低排序
+        result.sort(key=lambda x: x['avg_salary'], reverse=True)
+        
+        # 如果结果超过10个类别，只保留前10个
+        if len(result) > 10:
+            result = result[:10]
+        
+        return {
+            'categories': [item['education'] for item in result],
+            'data': [item['avg_salary'] for item in result],
+            'counts': [item['count'] for item in result]
+        }
+    
     @classmethod
     def perform_all_analysis(cls):
         """执行所有分析并保存结果
@@ -209,13 +291,21 @@ class JobDataAnalyzer:
                 defaults={'analysis_data': job_type_distribution}
             )
             
+            # 分析不同学历要求的平均薪资分布
+            education_salary_distribution = cls.analyze_education_salary_distribution()
+            JobAnalysis.objects.update_or_create(
+                analysis_type='education_salary_distribution',
+                defaults={'analysis_data': education_salary_distribution}
+            )
+            
             logger.info("所有数据分析完成并保存")
             
             return {
                 'industry_distribution': industry_distribution,
                 'salary_distribution': salary_distribution,
                 'location_distribution': location_distribution,
-                'job_type_distribution': job_type_distribution
+                'job_type_distribution': job_type_distribution,
+                'education_salary_distribution': education_salary_distribution
             }
         except Exception as e:
             logger.error(f"执行数据分析时出错: {e}")

@@ -136,12 +136,14 @@ class AnalysisViewSet(viewsets.ReadOnlyModelViewSet):
         salary_distribution = JobAnalysis.objects.filter(analysis_type='salary_distribution').first()
         location_distribution = JobAnalysis.objects.filter(analysis_type='location_distribution').first()
         job_type_distribution = JobAnalysis.objects.filter(analysis_type='job_type_distribution').first()
+        education_salary_distribution = JobAnalysis.objects.filter(analysis_type='education_salary_distribution').first()
         
         return Response({
             'industry_distribution': industry_distribution.analysis_data if industry_distribution else None,
             'salary_distribution': salary_distribution.analysis_data if salary_distribution else None,
             'location_distribution': location_distribution.analysis_data if location_distribution else None,
-            'job_type_distribution': job_type_distribution.analysis_data if job_type_distribution else None
+            'job_type_distribution': job_type_distribution.analysis_data if job_type_distribution else None,
+            'education_salary_distribution': education_salary_distribution.analysis_data if education_salary_distribution else None
         })
     
     @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated])
@@ -194,5 +196,14 @@ class AnalysisViewSet(viewsets.ReadOnlyModelViewSet):
         analysis = JobAnalysis.objects.filter(analysis_type='job_type_distribution').first()
         if not analysis:
             return Response({'error': '没有岗位类型分布分析数据'}, status=status.HTTP_404_NOT_FOUND)
+        
+        return Response(analysis.analysis_data)
+    
+    @action(detail=False, methods=['get'])
+    def education_salary(self, request):
+        """获取不同学历要求的平均薪资分析结果"""
+        analysis = JobAnalysis.objects.filter(analysis_type='education_salary_distribution').first()
+        if not analysis:
+            return Response({'error': '没有学历-薪资分析数据'}, status=status.HTTP_404_NOT_FOUND)
         
         return Response(analysis.analysis_data) 

@@ -6,20 +6,20 @@
       <el-skeleton :rows="20" animated />
     </div>
     <div v-else>
-      <!-- 行业分布分析 -->
+      <!-- 学历-薪资分布分析（替换行业分布分析） -->
       <el-card class="chart-card">
         <div slot="header" class="chart-header">
-          <span>行业分布分析</span>
-          <el-select v-model="industryChartType" size="small" style="width: 120px;">
-            <el-option label="饼图" value="pie"></el-option>
+          <span>学历要求-薪资分布分析</span>
+          <el-select v-model="educationSalaryChartType" size="small" style="width: 120px;">
             <el-option label="柱状图" value="bar"></el-option>
+            <el-option label="折线图" value="line"></el-option>
           </el-select>
         </div>
         <div class="chart-container">
-          <div v-if="!industryData" class="empty-data">
-            <el-empty description="暂无行业分布数据"></el-empty>
+          <div v-if="!educationSalaryData" class="empty-data">
+            <el-empty description="暂无学历-薪资分布数据"></el-empty>
           </div>
-          <div v-else ref="industryChart" class="chart"></div>
+          <div v-else ref="educationSalaryChart" class="chart"></div>
         </div>
       </el-card>
       
@@ -88,10 +88,10 @@ export default {
   
   data() {
     return {
-      industryChartType: 'pie',
+      educationSalaryChartType: 'bar',
       selectedProvince: '',
       charts: {
-        industry: null,
+        educationSalary: null,
         salary: null,
         province: null,
         city: null,
@@ -102,7 +102,7 @@ export default {
   
   computed: {
     ...mapGetters([
-      'industryAnalysis',
+      'educationSalaryAnalysis',
       'salaryAnalysis',
       'locationAnalysis',
       'jobTypeAnalysis',
@@ -113,8 +113,8 @@ export default {
       return this.isLoading
     },
     
-    industryData() {
-      return this.industryAnalysis
+    educationSalaryData() {
+      return this.educationSalaryAnalysis
     },
     
     salaryData() {
@@ -141,9 +141,9 @@ export default {
   },
   
   watch: {
-    industryData() {
+    educationSalaryData() {
       this.$nextTick(() => {
-        this.renderIndustryChart()
+        this.renderEducationSalaryChart()
       })
     },
     
@@ -165,9 +165,9 @@ export default {
       })
     },
     
-    industryChartType() {
+    educationSalaryChartType() {
       this.$nextTick(() => {
-        this.renderIndustryChart()
+        this.renderEducationSalaryChart()
       })
     },
     
@@ -208,95 +208,141 @@ export default {
       })
     },
     
-    renderIndustryChart() {
-      if (!this.industryData || !this.$refs.industryChart) return
+    renderEducationSalaryChart() {
+      if (!this.educationSalaryData || !this.$refs.educationSalaryChart) return
       
-      if (this.charts.industry) {
-        this.charts.industry.dispose()
+      if (this.charts.educationSalary) {
+        this.charts.educationSalary.dispose()
       }
       
-      this.charts.industry = echarts.init(this.$refs.industryChart)
+      this.charts.educationSalary = echarts.init(this.$refs.educationSalaryChart)
       
       let option = {}
-      if (this.industryChartType === 'pie') {
+      
+      if (this.educationSalaryChartType === 'bar') {
         option = {
           title: {
-            text: '行业分布',
-            left: 'center'
-          },
-          tooltip: {
-            trigger: 'item',
-            formatter: '{a} <br/>{b}: {c} ({d}%)'
-          },
-          legend: {
-            orient: 'vertical',
-            left: 'left',
-            data: this.industryData.categories
-          },
-          series: [
-            {
-              name: '行业分布',
-              type: 'pie',
-              radius: ['40%', '70%'],
-              avoidLabelOverlap: false,
-              label: {
-                show: false,
-                position: 'center'
-              },
-              emphasis: {
-                label: {
-                  show: true,
-                  fontSize: '16',
-                  fontWeight: 'bold'
-                }
-              },
-              labelLine: {
-                show: false
-              },
-              data: this.industryData.categories.map((name, index) => ({
-                value: this.industryData.data[index],
-                name
-              }))
-            }
-          ]
-        }
-      } else {
-        option = {
-          title: {
-            text: '行业分布',
+            text: '不同学历要求的平均薪资(元/月)',
             left: 'center'
           },
           tooltip: {
             trigger: 'axis',
             axisPointer: {
               type: 'shadow'
+            },
+            formatter: function(params) {
+              // 展示薪资和职位数量
+              const data = params[0];
+              return `${data.name}<br/>平均薪资: ${data.value}元/月<br/>职位数量: ${data.data.count}个`;
             }
+          },
+          grid: {
+            left: '5%',
+            right: '5%',
+            bottom: '10%',
+            containLabel: true
           },
           xAxis: {
             type: 'category',
-            data: this.industryData.categories,
+            data: this.educationSalaryData.categories,
             axisLabel: {
-              rotate: 45,
-              interval: 0
+              interval: 0,
+              rotate: 30,
+              fontSize: 12
             }
           },
           yAxis: {
-            type: 'value'
+            type: 'value',
+            name: '平均薪资(元/月)'
           },
           series: [
             {
-              name: '公司数量',
+              name: '平均薪资',
               type: 'bar',
-              data: this.industryData.data,
+              data: this.educationSalaryData.categories.map((category, index) => ({
+                value: this.educationSalaryData.data[index],
+                count: this.educationSalaryData.counts ? this.educationSalaryData.counts[index] : 0
+              })),
               itemStyle: {
-                color: '#ff9900'
+                color: function(params) {
+                  // 根据薪资高低设置不同颜色
+                  const colorList = [
+                    '#FF4500', '#FF6347', '#FF7F50', '#FF8C00', '#FFA500', 
+                    '#FFB90F', '#FFC125', '#FFD700', '#FFEC8B', '#FFFACD'
+                  ];
+                  return colorList[params.dataIndex % colorList.length];
+                }
+              },
+              label: {
+                show: true,
+                position: 'top',
+                formatter: '{c}元'
+              }
+            }
+          ]
+        }
+      } else {
+        option = {
+          title: {
+            text: '不同学历要求的平均薪资(元/月)',
+            left: 'center'
+          },
+          tooltip: {
+            trigger: 'axis',
+            formatter: function(params) {
+              // 展示薪资和职位数量
+              const data = params[0];
+              return `${data.name}<br/>平均薪资: ${data.value}元/月<br/>职位数量: ${data.data.count}个`;
+            }
+          },
+          grid: {
+            left: '5%',
+            right: '5%',
+            bottom: '10%',
+            containLabel: true
+          },
+          xAxis: {
+            type: 'category',
+            data: this.educationSalaryData.categories,
+            axisLabel: {
+              interval: 0,
+              rotate: 30,
+              fontSize: 12
+            }
+          },
+          yAxis: {
+            type: 'value',
+            name: '平均薪资(元/月)'
+          },
+          series: [
+            {
+              name: '平均薪资',
+              type: 'line',
+              data: this.educationSalaryData.categories.map((category, index) => ({
+                value: this.educationSalaryData.data[index],
+                count: this.educationSalaryData.counts ? this.educationSalaryData.counts[index] : 0
+              })),
+              smooth: true,
+              lineStyle: {
+                width: 4,
+                color: '#5470c6'
+              },
+              itemStyle: {
+                borderWidth: 2
+              },
+              symbol: 'circle',
+              symbolSize: 8,
+              label: {
+                show: true,
+                position: 'top',
+                formatter: '{c}元'
               }
             }
           ]
         }
       }
       
-      this.charts.industry.setOption(option)
+      this.charts.educationSalary.setOption(option)
     },
     
     renderSalaryChart() {

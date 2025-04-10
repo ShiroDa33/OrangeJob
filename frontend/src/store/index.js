@@ -30,7 +30,8 @@ export default new Vuex.Store({
       industry: null,
       salary: null,
       location: null,
-      jobType: null
+      jobType: null,
+      educationSalary: null
     },
     personnelTypes: [], // 存储所有可用的人员类型
     jobTypes: [], // 存储所有可用的岗位类型
@@ -217,6 +218,11 @@ export default new Vuex.Store({
           commit('SET_ANALYSIS_DATA', { key: 'jobType', data: response.job_type_distribution })
         }
         
+        if (response.education_salary_distribution) {
+          console.log('设置学历-薪资分布数据:', response.education_salary_distribution)
+          commit('SET_ANALYSIS_DATA', { key: 'educationSalary', data: response.education_salary_distribution })
+        }
+        
         // 直接尝试解析JSON字符串
         if (typeof response === 'string') {
           try {
@@ -386,6 +392,7 @@ export default new Vuex.Store({
     salaryAnalysis: state => state.analysisData.salary,
     locationAnalysis: state => state.analysisData.location,
     jobTypeAnalysis: state => state.analysisData.jobType,
+    educationSalaryAnalysis: state => state.analysisData.educationSalary,
     availablePersonnelTypes: state => state.personnelTypes,
     availableJobTypes: state => state.jobTypes,
     availableProvinces: state => state.provinces
