@@ -120,5 +120,10 @@ export default {
   
   getJobTypeAnalysis() {
     return service.get('/analysis/job_type/')
+  },
+  
+  // 新增：获取特定岗位类型的薪资趋势和预测
+  getJobTypeSalaryTrend(jobType) {
+    return service.get('/analysis/job_type_salary/', { params: { job_type: jobType } })
   }
 } 

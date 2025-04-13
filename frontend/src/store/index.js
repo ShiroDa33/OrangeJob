@@ -33,6 +33,8 @@ export default new Vuex.Store({
       jobType: null,
       educationSalary: null
     },
+    jobTypeSalaryTrend: null,
+    selectedJobType: null,
     personnelTypes: [], // 存储所有可用的人员类型
     jobTypes: [], // 存储所有可用的岗位类型
     provinces: [] // 存储所有可用的省份
@@ -68,6 +70,12 @@ export default new Vuex.Store({
     },
     SET_PROVINCES(state, provinces) {
       state.provinces = provinces
+    },
+    SET_JOB_TYPE_SALARY_TREND(state, data) {
+      state.jobTypeSalaryTrend = data
+    },
+    SET_SELECTED_JOB_TYPE(state, jobType) {
+      state.selectedJobType = jobType
     }
   },
   
@@ -377,6 +385,26 @@ export default new Vuex.Store({
       } finally {
         commit('SET_LOADING', false)
       }
+    },
+    
+    // 获取岗位类型薪资趋势
+    async fetchJobTypeSalaryTrend({ commit }, jobType) {
+      try {
+        commit('SET_LOADING', true)
+        commit('SET_ERROR', null)
+        commit('SET_SELECTED_JOB_TYPE', jobType)
+        
+        const response = await api.getJobTypeSalaryTrend(jobType)
+        commit('SET_JOB_TYPE_SALARY_TREND', response)
+        
+        return response
+      } catch (error) {
+        console.error('获取岗位类型薪资趋势失败:', error)
+        commit('SET_ERROR', error.message || '获取岗位类型薪资趋势失败')
+        return Promise.reject(error)
+      } finally {
+        commit('SET_LOADING', false)
+      }
     }
   },
   
@@ -395,6 +423,8 @@ export default new Vuex.Store({
     educationSalaryAnalysis: state => state.analysisData.educationSalary,
     availablePersonnelTypes: state => state.personnelTypes,
     availableJobTypes: state => state.jobTypes,
-    availableProvinces: state => state.provinces
+    availableProvinces: state => state.provinces,
+    jobTypeSalaryTrend: state => state.jobTypeSalaryTrend,
+    selectedJobType: state => state.selectedJobType
   }
 }) 
