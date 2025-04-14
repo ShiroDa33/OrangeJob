@@ -3,13 +3,14 @@ import json
 from datetime import datetime
 import time
 import logging
+import concurrent.futures
 
 logger = logging.getLogger(__name__)
 
 class JobCrawler:
     """职位信息爬虫"""
     
-    def __init__(self):
+    def __init__(self, max_workers=5):
         self.base_url = 'https://a.jiuyeb.cn/mobile.php/job/getlist'
         self.headers = {
             'accept': 'application/json, text/javascript, */*; q=0.01',
@@ -30,6 +31,7 @@ class JobCrawler:
             'token': '',
             'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36 Edg/135.0.0.0'
         }
+        self.max_workers = max_workers
         
     def fetch_jobs(self, page=1, size=20, job_type=1):
         """获取职位列表
@@ -67,44 +69,93 @@ class JobCrawler:
         except Exception as e:
             logger.error(f"获取职位列表失败: {e}")
             return {"data": {"list": []}, "code": -1, "message": str(e)}
+    
+    def fetch_page(self, page, job_type):
+        """爬取单页数据，用于并发爬取
+        
+        Args:
+            page: 页码
+            job_type: 职位类型
             
-    def fetch_all_jobs(self, job_type=1, max_pages=10):
-        """获取所有职位信息
+        Returns:
+            list: 该页的职位列表
+        """
+        logger.info(f"正在爬取第 {page} 页数据...")
+        result = self.fetch_jobs(page=page, job_type=job_type)
+        
+        if result.get('code') != 200:
+            logger.error(f"获取第 {page} 页数据失败: {result.get('message')}")
+            return []
+            
+        jobs = result.get('data', {}).get('list', [])
+        if not jobs:
+            logger.warning(f"第 {page} 页没有数据")
+            
+        # 短暂延迟避免请求过快
+        time.sleep(0.5)
+        return jobs
+            
+    def fetch_all_jobs(self, job_type=1, max_pages=10, max_workers=None):
+        """并发获取所有职位信息
         
         Args:
             job_type: 职位类型
             max_pages: 最大爬取页数，防止无限爬取
+            max_workers: 最大线程数，默认使用初始化时设置的值
             
         Returns:
             list: 职位信息列表
         """
         all_jobs = []
-        page = 1
-        total_pages = max_pages  # 默认最大页数，会在第一次请求后更新
         
-        while page <= total_pages and page <= max_pages:
-            logger.info(f"正在爬取第 {page} 页数据...")
-            result = self.fetch_jobs(page=page, job_type=job_type)
-            
-            if result.get('code') != 200:
-                logger.error(f"获取数据失败: {result.get('message')}")
-                break
-                
-            jobs = result.get('data', {}).get('list', [])
-            if not jobs:
-                break
-                
+        # 先获取第一页，以确定总页数
+        logger.info("正在获取第1页数据以确定总页数...")
+        result = self.fetch_jobs(page=1, job_type=job_type)
+        
+        if result.get('code') != 200:
+            logger.error(f"获取数据失败: {result.get('message')}")
+            return all_jobs
+        
+        # 提取第一页的职位信息
+        jobs = result.get('data', {}).get('list', [])
+        if jobs:
             all_jobs.extend(jobs)
+        else:
+            logger.warning("第一页没有数据，终止爬取")
+            return all_jobs
+        
+        # 计算总页数
+        total_count = result.get('data', {}).get('total_count', 0)
+        total_pages = min((total_count + 19) // 20, max_pages)  # 向上取整，且不超过max_pages
+        logger.info(f"总共有 {total_count} 条数据，{total_pages} 页")
+        
+        # 如果只有一页数据，直接返回
+        if total_pages <= 1:
+            return all_jobs
+        
+        # 设置并发线程数
+        if max_workers is None:
+            max_workers = self.max_workers
+        
+        # 使用线程池并发爬取剩余页面（从第2页开始）
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # 提交所有页面的爬取任务
+            future_to_page = {
+                executor.submit(self.fetch_page, page, job_type): page 
+                for page in range(2, total_pages + 1)
+            }
             
-            # 获取总页数
-            if page == 1:
-                total_count = result.get('data', {}).get('total_count', 0)
-                total_pages = (total_count + 19) // 20  # 向上取整
-                logger.info(f"总共有 {total_count} 条数据，{total_pages} 页")
-            
-            page += 1
-            time.sleep(1)  # 避免请求过于频繁
-            
+            # 处理完成的任务
+            for future in concurrent.futures.as_completed(future_to_page):
+                page = future_to_page[future]
+                try:
+                    page_jobs = future.result()
+                    all_jobs.extend(page_jobs)
+                    logger.info(f"第 {page} 页爬取成功，获取 {len(page_jobs)} 条数据")
+                except Exception as e:
+                    logger.error(f"处理第 {page} 页时出错: {e}")
+        
+        logger.info(f"并发爬取完成，共获取 {len(all_jobs)} 条职位数据")
         return all_jobs
     
     def parse_salary(self, salary_text):

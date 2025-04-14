@@ -1,6 +1,7 @@
 import logging
 from django.db import transaction
 from datetime import datetime
+import concurrent.futures
 from .job_crawler import JobCrawler
 from ..models import Company, Job
 
@@ -9,8 +10,9 @@ logger = logging.getLogger(__name__)
 class CrawlerManager:
     """爬虫管理器，负责爬取数据并存储到数据库"""
     
-    def __init__(self):
-        self.crawler = JobCrawler()
+    def __init__(self, max_workers=5):
+        self.crawler = JobCrawler(max_workers=max_workers)
+        self.max_workers = max_workers
         
     @transaction.atomic
     def save_job_to_db(self, job_info):
@@ -54,31 +56,66 @@ class CrawlerManager:
             
         return job
     
-    def crawl_and_save(self, job_type=1, max_pages=10):
-        """爬取职位数据并保存到数据库
+    def process_and_save_job(self, raw_job):
+        """处理并保存单个职位信息，用于并发处理
+        
+        Args:
+            raw_job: 原始职位数据
+            
+        Returns:
+            bool: 是否成功保存
+        """
+        try:
+            job_info = self.crawler.extract_job_info(raw_job)
+            self.save_job_to_db(job_info)
+            return True
+        except Exception as e:
+            logger.error(f"保存职位数据失败: {e}")
+            return False
+    
+    def crawl_and_save(self, job_type=1, max_pages=10, max_workers=None):
+        """并发爬取职位数据并保存到数据库
         
         Args:
             job_type: 职位类型 (1=全职, 2=实习, 3=兼职)
             max_pages: 最大爬取页数
+            max_workers: 最大工作线程数，None表示使用默认值
             
         Returns:
             int: 成功保存的职位数量
         """
-        logger.info(f"开始爬取职位数据，类型: {job_type}，最大页数: {max_pages}")
+        if max_workers is None:
+            max_workers = self.max_workers
+            
+        logger.info(f"开始爬取职位数据，类型: {job_type}，最大页数: {max_pages}，并发线程数: {max_workers}")
         
-        # 爬取数据
-        raw_jobs = self.crawler.fetch_all_jobs(job_type=job_type, max_pages=max_pages)
+        # 并发爬取数据
+        raw_jobs = self.crawler.fetch_all_jobs(job_type=job_type, max_pages=max_pages, max_workers=max_workers)
         logger.info(f"爬取完成，共获取 {len(raw_jobs)} 条职位数据")
         
-        # 处理并保存数据
+        if not raw_jobs:
+            logger.warning("没有获取到职位数据")
+            return 0
+            
+        # 并发处理和保存数据
         saved_count = 0
-        for raw_job in raw_jobs:
-            try:
-                job_info = self.crawler.extract_job_info(raw_job)
-                self.save_job_to_db(job_info)
-                saved_count += 1
-            except Exception as e:
-                logger.error(f"保存职位数据失败: {e}")
-                
-        logger.info(f"数据保存完成，成功保存 {saved_count} 条职位数据")
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # 提交所有职位的处理任务
+            future_to_job = {
+                executor.submit(self.process_and_save_job, raw_job): i 
+                for i, raw_job in enumerate(raw_jobs)
+            }
+            
+            # 处理完成的任务
+            for future in concurrent.futures.as_completed(future_to_job):
+                job_index = future_to_job[future]
+                try:
+                    if future.result():
+                        saved_count += 1
+                        if saved_count % 10 == 0:  # 每保存10个职位打印一次日志
+                            logger.info(f"已保存 {saved_count}/{len(raw_jobs)} 条职位数据")
+                except Exception as e:
+                    logger.error(f"处理第 {job_index+1} 个职位时出错: {e}")
+        
+        logger.info(f"数据保存完成，成功保存 {saved_count}/{len(raw_jobs)} 条职位数据")
         return saved_count 

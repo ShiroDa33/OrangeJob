@@ -1,43 +1,134 @@
 from django.core.management.base import BaseCommand
+from django.db import transaction
 from job_analysis.models import Company, Job
 from datetime import datetime
 import requests
 import json
 import random
+import time
+import concurrent.futures
 
 class Command(BaseCommand):
     help = '从成都大学就业网抓取招聘数据'
 
+    def add_arguments(self, parser):
+        parser.add_argument(
+            '--pages',
+            type=int,
+            default=5,
+            help='最大爬取页数'
+        )
+        parser.add_argument(
+            '--workers',
+            type=int,
+            default=5,
+            help='并发线程数'
+        )
+        parser.add_argument(
+            '--type',
+            type=int,
+            default=1,
+            help='职位类型 (1=全职, 2=实习, 3=兼职)'
+        )
+        parser.add_argument(
+            '--clear',
+            action='store_true',
+            default=False,
+            help='是否清空现有数据'
+        )
+
     def handle(self, *args, **options):
         self.stdout.write('开始抓取招聘数据...')
         
-        # 清空现有数据
-        self.stdout.write('清空现有数据...')
-        Job.objects.all().delete()
-        Company.objects.all().delete()
-            
-        # 设置爬取的页数
-        total_pages = 5  # 默认爬取5页数据
+        # 获取参数
+        max_pages = options['pages']
+        max_workers = options['workers']
+        job_type = options['type']
+        clear_data = options['clear']
         
-        total_jobs = 0
-        for page in range(1, total_pages + 1):
-            jobs_data = self.fetch_jobs_data(page)
-            if not jobs_data:
-                self.stdout.write(f'第{page}页数据获取失败，停止爬取')
-                break
+        # 清空现有数据
+        if clear_data:
+            self.stdout.write('清空现有数据...')
+            Job.objects.all().delete()
+            Company.objects.all().delete()
+        
+        self.stdout.write(self.style.SUCCESS(f"开始爬取职位信息，类型: {job_type}，最大页数: {max_pages}，并发线程数: {max_workers}"))
+        
+        # 获取第一页数据，确定总页数
+        self.stdout.write('获取第1页数据以确定总页数...')
+        first_page_data = self.fetch_jobs_data(1, job_type)
+        
+        if not first_page_data:
+            self.stdout.write(self.style.ERROR('获取第1页数据失败，停止爬取'))
+            return
+        
+        # 处理第一页数据
+        first_page_count = self.process_jobs_data(first_page_data)
+        self.stdout.write(f'已处理第1页数据，获取{first_page_count}个职位')
+        
+        total_jobs = first_page_count
+        
+        # 确定实际需要爬取的页数
+        # 如果返回的数据不足一页，说明已到达最后一页
+        if first_page_count < 20:
+            self.stdout.write('数据不足一页，结束爬取')
+            self.stdout.write(self.style.SUCCESS(f'数据抓取完成! 共获取{total_jobs}个职位'))
+            return
+        
+        # 并发爬取剩余页面（从第2页开始）
+        remaining_pages = min(max_pages, 20) - 1  # 限制最大页数为20，避免过度爬取
+        if remaining_pages > 0:
+            self.stdout.write(f'开始并发爬取剩余{remaining_pages}页数据...')
+            
+            failed_pages = []  # 记录失败的页码
+            
+            with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+                # 创建爬取任务
+                future_to_page = {
+                    executor.submit(self.fetch_jobs_data, page, job_type): page 
+                    for page in range(2, remaining_pages + 2)
+                }
                 
-            jobs_count = self.process_jobs_data(jobs_data)
-            total_jobs += jobs_count
+                # 处理爬取结果
+                for future in concurrent.futures.as_completed(future_to_page):
+                    page = future_to_page[future]
+                    try:
+                        jobs_data = future.result()
+                        if jobs_data:
+                            # 并发处理每页的职位数据
+                            jobs_count = self.process_jobs_data(jobs_data)
+                            total_jobs += jobs_count
+                            self.stdout.write(f'已处理第{page}页数据，获取{jobs_count}个职位')
+                            
+                            # 如果返回的数据不足一页，可能已到达最后页
+                            if jobs_count < 20:
+                                self.stdout.write(f'第{page}页数据不足一页，可能已到达最后页')
+                        else:
+                            self.stdout.write(self.style.WARNING(f'第{page}页数据获取失败'))
+                            failed_pages.append(page)
+                    except Exception as e:
+                        self.stdout.write(self.style.ERROR(f'处理第{page}页时出错: {str(e)}'))
+                        failed_pages.append(page)
             
-            self.stdout.write(f'已处理第{page}页数据，获取{jobs_count}个职位')
-            
-            # 如果返回的数据不足一页，说明已到达最后一页
-            if jobs_count < 20:
-                break
+            # 如果有失败的页面，尝试串行重试一次
+            if failed_pages:
+                self.stdout.write(f'有 {len(failed_pages)} 个页面爬取失败，尝试重新爬取...')
+                for page in failed_pages:
+                    try:
+                        self.stdout.write(f'重新爬取第 {page} 页...')
+                        retry_jobs_data = self.fetch_jobs_data(page, job_type)
+                        if retry_jobs_data:
+                            retry_count = self.process_jobs_data(retry_jobs_data)
+                            total_jobs += retry_count
+                            self.stdout.write(f'重试成功：第{page}页获取{retry_count}个职位')
+                        else:
+                            self.stdout.write(self.style.WARNING(f'重试失败：第{page}页仍无法获取数据'))
+                    except Exception as e:
+                        self.stdout.write(self.style.ERROR(f'重试第{page}页时出错: {str(e)}'))
         
         self.stdout.write(self.style.SUCCESS(f'数据抓取完成! 共获取{total_jobs}个职位'))
     
-    def fetch_jobs_data(self, page):
+    def fetch_jobs_data(self, page, job_type=1):
         """从成都大学就业网获取招聘数据"""
         url = 'https://a.jiuyeb.cn/mobile.php/job/getlist'
         
@@ -60,7 +151,7 @@ class Command(BaseCommand):
         }
         
         data = {
-            'jobtype': '1',
+            'jobtype': str(job_type),
             'isunion': '2',
             'school_id': '92727a49-c69a-6814-7231-a90bbbe287a7',
             'page': str(page),
@@ -77,45 +168,53 @@ class Command(BaseCommand):
             'login_admin_school_id': '92727a49-c69a-6814-7231-a90bbbe287a7'
         }
         
+        self.stdout.write(f"正在爬取第 {page} 页数据...")
         try:
             response = requests.post(url, headers=headers, data=data, timeout=10)
             response.raise_for_status()  # 如果状态码不是200，引发异常
             
-            # 打印原始响应内容，用于调试
-            self.stdout.write(f"API响应: {response.text[:1000]}")
+            # 避免请求过快
+            time.sleep(0.5)
             
             result = response.json()
             
-            # 打印处理后的响应
-            self.stdout.write(f"状态码: {result.get('code')}")
-            self.stdout.write(f"消息: {result.get('msg')}")
+            # 输出更详细的调试信息
+            self.stdout.write(f"第 {page} 页API返回状态码: {result.get('code')}")
+            self.stdout.write(f"第 {page} 页API返回消息: {result.get('msg')}")
             
+            # API特殊情况：状态码为0但实际上是成功的
+            # 检查返回的数据结构
             if 'data' in result:
-                self.stdout.write(f"数据结构: {str(result['data'].keys())[:200]}")
-                
+                self.stdout.write(f"第 {page} 页数据结构: {str(result['data'].keys())[:100]}...")
                 if 'list' in result['data']:
                     job_list = result['data']['list']
-                    self.stdout.write(f"职位列表长度: {len(job_list)}")
+                    self.stdout.write(f"第 {page} 页获取到 {len(job_list)} 条职位数据")
                     return job_list
-                else:
-                    self.stdout.write(self.style.WARNING("响应中没有'list'字段"))
-            else:
-                self.stdout.write(self.style.WARNING("响应中没有'data'字段"))
             
-            # 如果无法正常解析数据，但API返回成功，尝试使用备用方案
-            if result.get('code') == 200:
-                # 可能API返回格式有变化，尝试从其他字段获取数据
-                for key, value in result.items():
-                    if isinstance(value, list) and len(value) > 0:
-                        self.stdout.write(f"尝试使用备用数据源: {key}")
+            # 尝试直接从result中获取list字段
+            if 'list' in result:
+                job_list = result['list']
+                self.stdout.write(f"直接从result获取到 {len(job_list)} 条职位数据")
+                return job_list
+            
+            # 尝试遍历所有字段查找列表数据
+            for key, value in result.items():
+                if isinstance(value, list) and len(value) > 0:
+                    # 检查列表的第一个元素是否包含职位相关字段
+                    first_item = value[0]
+                    if isinstance(first_item, dict) and ('work_name' in first_item or 'com_id_name' in first_item):
+                        self.stdout.write(f"从字段 {key} 中找到疑似职位列表，包含 {len(value)} 条数据")
                         return value
             
-            self.stdout.write(self.style.ERROR(f'获取数据失败: {result.get("msg", "未知错误")}'))
+            # 如果以上方法都无法获取数据，输出完整的返回结构帮助调试
+            self.stdout.write(f"完整的返回结构: {str(result)[:500]}...")
+            self.stdout.write(self.style.ERROR(f'无法从返回数据中提取职位列表，第 {page} 页爬取失败'))
             return None
         except Exception as e:
-            self.stdout.write(self.style.ERROR(f'请求失败: {str(e)}'))
+            self.stdout.write(self.style.ERROR(f'请求第 {page} 页数据失败: {str(e)}'))
             return None
     
+    @transaction.atomic
     def process_jobs_data(self, jobs_data):
         """处理招聘数据并保存到数据库"""
         count = 0
@@ -153,14 +252,14 @@ class Command(BaseCommand):
                         timestamp = int(job_data.get('examine_time'))
                         publish_date = datetime.fromtimestamp(timestamp).date()
                     except Exception as e:
-                        self.stdout.write(f"解析examine_time失败: {e}")
+                        pass
                 
                 # 如果examine_time解析失败，尝试使用addtime1
                 if not publish_date and job_data.get('addtime1'):
                     try:
                         publish_date = datetime.strptime(job_data.get('addtime1'), '%Y-%m-%d').date()
                     except Exception as e:
-                        self.stdout.write(f"解析addtime1失败: {e}")
+                        pass
                 
                 # 如果还是失败，尝试使用addtime时间戳
                 if not publish_date and job_data.get('addtime'):
@@ -168,7 +267,7 @@ class Command(BaseCommand):
                         timestamp = int(job_data.get('addtime'))
                         publish_date = datetime.fromtimestamp(timestamp).date()
                     except Exception as e:
-                        self.stdout.write(f"解析addtime失败: {e}")
+                        pass
                 
                 # 提取薪资信息
                 salary_min = None
@@ -230,9 +329,6 @@ class Command(BaseCommand):
                     for tag_item in tag_list:
                         if isinstance(tag_item, dict) and 'title' in tag_item:
                             tags.append(tag_item['title'])
-                            
-                # 输出调试信息
-                self.stdout.write(f"职位: {title}, 标签数量: {len(tags)}, 标签: {tags}")
                 
                 # 创建职位
                 Job.objects.create(
